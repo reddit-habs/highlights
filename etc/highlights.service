@@ -1,7 +1,10 @@
 [Unit]
+After=network-online.target
 
-[Timer]
-OnCalendar=*:0/15
-
-[Install]
-WantedBy=timers.target
+[Service]
+Type=oneshot
+RemainAfterExit=no
+User=root
+Group=root
+WorkingDirectory=/root/highlights
+ExecStart=/root/highlights/venv/bin/python <html> <json>
