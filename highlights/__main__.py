@@ -1,5 +1,5 @@
+import argparse
 import sqlite3
-import sys
 from collections import defaultdict
 from datetime import datetime
 
@@ -147,16 +147,20 @@ class Database:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        print("dtmts <html> <json>")
-        exit(1)
-    path_html, path_json = sys.argv[1], sys.argv[2]
+    parser = argparse.ArgumentParser()
+    parser.add_argument("path_html")
+    parser.add_argument("path_json")
+    parser.add_argument("--date", default=None)
+    args = parser.parse_args()
+
+    date = pendulum.today() if args.date is None else pendulum.parse(args.date)
 
     db = Database()
     api = NHLAPI(nhlapi.io.Client())
 
     print("Fetching schedule...")
-    s = api.schedule()
+    print(date)
+    s = api.schedule(date=date)
 
     for g in s.dates[0].games:
         game_id = g.gamePk
@@ -193,7 +197,7 @@ if __name__ == "__main__":
     tpl = env.from_string(_TEMPLATE)
     text = tpl.render(days=info, date=date)
 
-    with open(path_html, "w") as f:
+    with open(args.path_html, "w") as f:
         f.write(text)
 # with open("a.json", "w") as f:
 #     f.write(json.dumps(info))
