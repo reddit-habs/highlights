@@ -31,8 +31,8 @@ _TEMPLATE = """\
 <body>
     <h1>NHL game recaps | <small>direct links to videos</small></h1>
     <hr/>
-    {% for date, games in days.items() %}
-    {{ date | date_pretty }}
+    {% for day in days %}
+    {{ day.date | date_pretty }}
     <table border="0" cellpadding="5">
         <tr>
             <th>Home</th>
@@ -40,7 +40,7 @@ _TEMPLATE = """\
             <th>Short</th>
             <th>Extended</th>
         </tr>
-        {% for game in games %}
+        {% for game in day.games %}
         <tr>
             <th>{{ game.home | upper }}</th>
             <th>{{ game.away | upper }}</th>
@@ -187,6 +187,9 @@ if __name__ == "__main__":
 
     for h in db.select_all():
         info[h.date].append(h)
+
+    info = [dict(date=key, games=val) for key, val in info.items()]
+    info.sort(key=lambda d: d["date"], reverse=True)
 
     def _date_pretty(s):
         return pendulum.parse(s).format("dddd MMMM Do YYYY")
