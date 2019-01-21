@@ -2,12 +2,12 @@ import argparse
 import sqlite3
 from collections import defaultdict
 from datetime import datetime
+from pathlib import Path
 
 import jinja2
-from attr import attrib, attrs
-
 import nhlapi.io
 import pendulum
+from attr import attrib, attrs
 from nhlapi.endpoints import NHLAPI
 
 _TABLES_SQL = """
@@ -29,6 +29,12 @@ _TEMPLATE = """\
     <title>NHL game recaps</title>
 </head>
 <body>
+    <div>
+        <a href="index.html">Home</a> |
+        {% for team in teams %}
+        <a href="{{team}}.html">{{team}}</a>
+        {% endfor %}
+    <div>
     <h1>NHL game recaps | <small>direct links to videos</small></h1>
     <hr/>
     {% for day in days %}
@@ -60,8 +66,7 @@ _TEMPLATE = """\
     <hr/>
     {% endfor %}
     <p>This is a non-profit page created to bring NHL game recaps to users that
-    cannot access them, such as Linux users. The data is also available in
-    JSON <a href="hockey.json">here</a>.</p>
+    cannot access them, such as Linux users.
     Last update: {{ date }}
 </body>
 </html>
@@ -145,33 +150,67 @@ class Database:
         cur = self._con.execute("SELECT * FROM highlights ORDER BY date DESC")
         return [Highlight(*row) for row in cur.fetchall()]
 
+    def select_team(self, team):
+        cur = self._con.execute("SELECT * FROM highlights WHERE home = ? OR away = ?", [team, team])
+        return [Highlight(*row) for row in cur.fetchall()]
+
+
+def highlights_to_days(hs):
+    days = defaultdict(list)
+
+    for h in hs:
+        days[h.date].append(h)
+
+    days = [dict(date=key, games=val) for key, val in days.items()]
+    days.sort(key=lambda d: d["date"], reverse=True)
+
+    return days
+
+
+def date_pretty(s):
+    return pendulum.parse(s).format("dddd MMMM Do YYYY")
+
+
+def maybe(val, func):
+    if val is None:
+        return None
+    return func(val)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("path_html")
-    parser.add_argument("path_json")
     parser.add_argument("--date", default=None)
+    parser.add_argument("--start", default=None)
     args = parser.parse_args()
 
-    date = pendulum.today() if args.date is None else pendulum.parse(args.date)
+    date = maybe(args.date, pendulum.parse)
+    start = maybe(args.start, pendulum.parse)
 
     db = Database()
     api = NHLAPI(nhlapi.io.Client())
 
     print("Fetching schedule...")
     print(date)
-    s = api.schedule(date=date)
+    if start is not None:
+        s = api.schedule(start_date=start, end_date=pendulum.today())
+    else:
+        s = api.schedule(date=date)
 
-    for g in s.dates[0].games:
-        game_id = g.gamePk
-        date = s.dates[0].date
-        home = _TEAMS[str(g.teams.home.team.id)]
-        away = _TEAMS[str(g.teams.away.team.id)]
+    for gameDay in s.dates:
+        for g in gameDay.games:
+            game_id = g.gamePk
+            date = gameDay.date
+            try:
+                home = _TEAMS[str(g.teams.home.team.id)]
+                away = _TEAMS[str(g.teams.away.team.id)]
+            except KeyError:
+                continue
 
-        h = Highlight(game_id, date, home, away)
-        if db.get_by_id(h.game_id) is None:
-            print("Inserting new game into database", h.game_id, ":", h.away, "at", h.home)
-            db.insert(h)
+            h = Highlight(game_id, date, home, away)
+            if db.get_by_id(h.game_id) is None:
+                print("Inserting new game into database", h.game_id, ":", h.away, "at", h.home)
+                db.insert(h)
 
     for h in db.select_missing():
         print("Getting content for game", h.game_id, ":", h.away, "at", h.home)
@@ -183,24 +222,18 @@ if __name__ == "__main__":
                 h.extended = media["items"][0].playbacks[-1].url
         db.update(h)
 
-    info = defaultdict(list)
-
-    for h in db.select_all():
-        info[h.date].append(h)
-
-    info = [dict(date=key, games=val) for key, val in info.items()]
-    info.sort(key=lambda d: d["date"], reverse=True)
-
-    def _date_pretty(s):
-        return pendulum.parse(s).format("dddd MMMM Do YYYY")
+    teams = list(sorted(_TEAMS.values()))
 
     date = datetime.now().strftime("%Y-%m-%d %H:%M")
     env = jinja2.Environment()
-    env.filters["date_pretty"] = _date_pretty
+    env.filters["date_pretty"] = date_pretty
     tpl = env.from_string(_TEMPLATE)
-    text = tpl.render(days=info, date=date)
 
-    with open(args.path_html, "w") as f:
-        f.write(text)
-# with open("a.json", "w") as f:
-#     f.write(json.dumps(info))
+    text = tpl.render(days=highlights_to_days(db.select_all()), date=date, teams=teams)
+    Path(args.path_html, "index.html").write_text(text)
+
+    for team in _TEAMS.values():
+        hs = db.select_team(team)
+        days = highlights_to_days(hs)
+        text = tpl.render(days=days, date=date, teams=teams)
+        Path(args.path_html, team + ".html").write_text(text)
