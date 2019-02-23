@@ -5,9 +5,10 @@ from datetime import datetime
 from pathlib import Path
 
 import jinja2
+from attr import attrib, attrs
+
 import nhlapi.io
 import pendulum
-from attr import attrib, attrs
 from nhlapi.endpoints import NHLAPI
 
 _TABLES_SQL = """
@@ -143,7 +144,11 @@ class Database:
         self._con.commit()
 
     def select_missing(self):
-        cur = self._con.execute("SELECT * FROM highlights WHERE recap IS NULL OR extended IS NULL")
+        # Some highlights might simply never show up. Give up trying to find them after 3 days.
+        cutoff = pendulum.today().add(days=-3).format("YYYY-MM-DD")
+        cur = self._con.execute(
+            "SELECT * FROM highlights WHERE date >= ? AND (recap IS NULL OR extended IS NULL)", [cutoff]
+        )
         return [Highlight(*row) for row in cur.fetchall()]
 
     def select_all(self):
