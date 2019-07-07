@@ -7,7 +7,7 @@ from pathlib import Path
 import jinja2
 from attr import attrib, attrs
 
-import nhlapi.io
+import nhlapi
 import pendulum
 from nhlapi.endpoints import NHLAPI
 
@@ -193,7 +193,7 @@ if __name__ == "__main__":
     start = maybe(args.start, pendulum.parse)
 
     db = Database()
-    api = NHLAPI(nhlapi.io.Client())
+    api = NHLAPI(nhlapi.SyncClient())
 
     print("Fetching schedule...")
     print(date)
