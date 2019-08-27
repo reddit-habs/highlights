@@ -19,7 +19,13 @@ CREATE TABLE IF NOT EXISTS highlights (
     away TEXT NOT NULL,
     recap TEXT,
     extended TEXT
-)
+);
+
+CREATE TABLE IF NOT EXISTS seasons (
+    name TEXT PRIMARY KEY NOT NULL,
+    begin INTEGER NOT NULL,
+    end INTEGER NOT NULL
+);
 """
 
 _TEMPLATE = """\
@@ -33,9 +39,20 @@ _TEMPLATE = """\
     <div>
         <a href="index.html">Home</a> |
         {% for team in teams %}
-        <a href="{{team}}.html">{{team}}</a>
+            <a href="{{ team }}.html">{{ team }}</a>
         {% endfor %}
     <div>
+    <hr>
+    <div>
+        Seasons:
+        {% for season in seasons %}
+            {% if team %}
+                <a href="../{{ season.name }}/{{ team }}.html">{{ season.name }}</a>
+            {% else %}
+                <a href="../{{ season.name }}/">{{ season.name }}</a>
+            {% endif %}
+        {% endfor %}
+    </div>
     <h1>NHL game recaps | <small>direct links to videos</small></h1>
     <hr/>
     {% for day in days %}
@@ -118,10 +135,30 @@ class Highlight:
     extended = attrib(default=None)
 
 
+@attrs(slots=True)
+class Season:
+    name = attrib()
+    begin = attrib()
+    end = attrib()
+
+
 class Database:
     def __init__(self):
         self._con = sqlite3.connect("highlights.db")
-        self._con.execute(_TABLES_SQL)
+        self._con.executescript(_TABLES_SQL)
+
+        seasons = [
+            (2019, 2020),
+            (2018, 2019),
+        ]
+
+        for (begin, end) in seasons:
+            try:
+                self._con.execute("INSERT INTO seasons (name, begin, end) VALUES (?, ?, ?)", ["{}-{}".format(begin, end), begin, end])
+                self._con.commit()
+            except sqlite3.Error as e:
+                print(e)
+                self._con.rollback()
 
     def get_by_id(self, game_id):
         cur = self._con.execute("SELECT * FROM highlights WHERE game_id = ?", [game_id])
@@ -129,6 +166,10 @@ class Database:
         if row is not None:
             return Highlight(*row)
         return None
+
+    def get_seasons(self):
+        cur = self._con.execute("SELECT * FROM seasons ORDER BY end DESC")
+        return [Season(*row) for row in cur]
 
     def update(self, h: Highlight):
         self._con.execute(
@@ -234,11 +275,13 @@ if __name__ == "__main__":
     env.filters["date_pretty"] = date_pretty
     tpl = env.from_string(_TEMPLATE)
 
-    text = tpl.render(days=highlights_to_days(db.select_all()), date=date, teams=teams)
+    seasons = db.get_seasons()
+
+    text = tpl.render(days=highlights_to_days(db.select_all()), date=date, team=None, teams=teams, seasons=seasons)
     Path(args.path_html, "index.html").write_text(text)
 
     for team in _TEAMS.values():
         hs = db.select_team(team)
         days = highlights_to_days(hs)
-        text = tpl.render(days=days, date=date, teams=teams)
+        text = tpl.render(days=days, date=date, team=team, teams=teams, seasons=seasons)
         Path(args.path_html, team + ".html").write_text(text)
