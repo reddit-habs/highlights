@@ -1,0 +1,62 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <title>NHL game recaps</title>
+</head>
+
+<body>
+    <div>
+        <a href="index.html">Home</a> |
+        {% for team in teams %}
+        <a href="{{ team }}.html">{{ team }}</a>
+        {% endfor %}
+        <div>
+            <hr>
+            <div>
+                Seasons:
+                {% for season in seasons %}
+                {% if team %}
+                <a href="../{{ season.name }}/{{ team }}.html">{{ season.name }}</a>
+                {% else %}
+                <a href="../{{ season.name }}/">{{ season.name }}</a>
+                {% endif %}
+                {% endfor %}
+            </div>
+            <h1>NHL game recaps | <small>direct links to videos</small></h1>
+            <hr />
+            {% for day in days %}
+            {{ day.date | date_pretty }}
+            <table border="0" cellpadding="5">
+                <tr>
+                    <th>Home</th>
+                    <th>Away</th>
+                    <th>Short</th>
+                    <th>Extended</th>
+                </tr>
+                {% for game in day.games %}
+                <tr>
+                    <th>{{ game.home | upper }}</th>
+                    <th>{{ game.away | upper }}</th>
+                    {% if game.recap %}
+                    <th><a href="{{ game.recap }}" target="_blank">link</a></th>
+                    {% else %}
+                    <th>-</th>
+                    {% endif %}
+                    {% if game.extended %}
+                    <th><a href="{{ game.extended }}" target="_blank">link</a></th>
+                    {% else %}
+                    <th>-</th>
+                    {% endif %}
+                </tr>
+                {% endfor %}
+            </table>
+            <hr />
+            {% endfor %}
+            <p>This is a non-profit page created to bring NHL game recaps to users that
+                cannot access them, such as Linux users.
+                Last update: {{ date }}
+</body>
+
+</html>

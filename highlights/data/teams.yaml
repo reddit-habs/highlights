@@ -1,0 +1,72 @@
+divisions:
+  - name: Pacific
+    teams:
+      - code: ANA
+        id: 24
+      - code: ARI
+        id: 53
+      - code: CGY
+        id: 20
+      - code: EDM
+        id: 22
+      - code: LAK
+        id: 26
+      - code: SJS
+        id: 28
+      - code: VAN
+        id: 23
+      - code: VGK
+        id: 54
+  - name: Western
+    teams:
+      - code: CHI
+        id: 16
+      - code: COL
+        id: 21
+      - code: DAL
+        id: 25
+      - code: MIN
+        id: 30
+      - code: NSH
+        id: 18
+      - code: STL
+        id: 19
+      - code: WPG
+        id: 52
+    teams:
+  - name: Metropolitan
+    teams:
+      - code: CAR
+        id: 12
+      - code: CBJ
+        id: 29
+      - code: NJD
+        id: 1
+      - code: NYI
+        id: 2
+      - code: NYR
+        id: 3
+      - code: PHI
+        id: 4
+      - code: PIT
+        id: 5
+      - code: WSH
+        id: 10
+  - name: Eastern
+    teams:
+      - code: BOS
+        id: 6
+      - code: BUF
+        id: 7
+      - code: DET
+        id: 17
+      - code: FLA
+        id: 13
+      - code: MTL
+        id: 8
+      - code: OTT
+        id: 9
+      - code: TBL
+        id: 14
+      - code: TOR
+        id: 10

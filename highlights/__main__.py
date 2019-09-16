@@ -1,15 +1,22 @@
 import argparse
 import sqlite3
+import os
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 
+import requests
 import jinja2
 from attr import attrib, attrs
 
+import yaml
 import nhlapi
 import pendulum
 from nhlapi.endpoints import NHLAPI
+
+PACKAGE_PATH = Path(__file__).parent
+DATA_PATH = PACKAGE_PATH / "data"
+TEMPLATES_PATH = PACKAGE_PATH / "templates"
 
 _TABLES_SQL = """
 CREATE TABLE IF NOT EXISTS highlights (
@@ -27,102 +34,6 @@ CREATE TABLE IF NOT EXISTS seasons (
     end INTEGER NOT NULL
 );
 """
-
-_TEMPLATE = """\
-<!doctype html>
-<html>
-<head>
-    <meta charset="utf-8"/>
-    <title>NHL game recaps</title>
-</head>
-<body>
-    <div>
-        <a href="index.html">Home</a> |
-        {% for team in teams %}
-            <a href="{{ team }}.html">{{ team }}</a>
-        {% endfor %}
-    <div>
-    <hr>
-    <div>
-        Seasons:
-        {% for season in seasons %}
-            {% if team %}
-                <a href="../{{ season.name }}/{{ team }}.html">{{ season.name }}</a>
-            {% else %}
-                <a href="../{{ season.name }}/">{{ season.name }}</a>
-            {% endif %}
-        {% endfor %}
-    </div>
-    <h1>NHL game recaps | <small>direct links to videos</small></h1>
-    <hr/>
-    {% for day in days %}
-    {{ day.date | date_pretty }}
-    <table border="0" cellpadding="5">
-        <tr>
-            <th>Home</th>
-            <th>Away</th>
-            <th>Short</th>
-            <th>Extended</th>
-        </tr>
-        {% for game in day.games %}
-        <tr>
-            <th>{{ game.home | upper }}</th>
-            <th>{{ game.away | upper }}</th>
-            {% if game.recap %}
-                <th><a href="{{ game.recap }}" target="_blank">link</a></th>
-            {% else %}
-                <th>-</th>
-            {% endif %}
-            {% if game.extended %}
-                <th><a href="{{ game.extended }}" target="_blank">link</a></th>
-            {% else %}
-                <th>-</th>
-            {% endif %}
-        </tr>
-        {% endfor %}
-    </table>
-    <hr/>
-    {% endfor %}
-    <p>This is a non-profit page created to bring NHL game recaps to users that
-    cannot access them, such as Linux users.
-    Last update: {{ date }}
-</body>
-</html>
-"""
-
-_TEAMS = {
-    "1": "NJD",
-    "2": "NYI",
-    "3": "NYR",
-    "4": "PHI",
-    "5": "PIT",
-    "6": "BOS",
-    "7": "BUF",
-    "8": "MTL",
-    "9": "OTT",
-    "10": "TOR",
-    "12": "CAR",
-    "13": "FLA",
-    "14": "TBL",
-    "15": "WSH",
-    "16": "CHI",
-    "17": "DET",
-    "18": "NSH",
-    "19": "STL",
-    "20": "CGY",
-    "21": "COL",
-    "22": "EDM",
-    "23": "VAN",
-    "24": "ANA",
-    "25": "DAL",
-    "26": "LAK",
-    "28": "SJS",
-    "29": "CBJ",
-    "30": "MIN",
-    "52": "WPG",
-    "53": "ARI",
-    "54": "VGK",
-}
 
 
 @attrs(slots=True)
@@ -147,14 +58,13 @@ class Database:
         self._con = sqlite3.connect("highlights.db")
         self._con.executescript(_TABLES_SQL)
 
-        seasons = [
-            (2019, 2020),
-            (2018, 2019),
-        ]
+        seasons = [(2019, 2020), (2018, 2019)]
 
         for (begin, end) in seasons:
             try:
-                self._con.execute("INSERT INTO seasons (name, begin, end) VALUES (?, ?, ?)", ["{}-{}".format(begin, end), begin, end])
+                self._con.execute(
+                    "INSERT INTO seasons (name, begin, end) VALUES (?, ?, ?)", ["{}-{}".format(begin, end), begin, end]
+                )
                 self._con.commit()
             except sqlite3.Error as e:
                 print(e)
@@ -260,7 +170,10 @@ if __name__ == "__main__":
 
     for h in db.select_missing():
         print("Getting content for game", h.game_id, ":", h.away, "at", h.home)
-        g = api.content(h.game_id)
+        try:
+            g = api.content(h.game_id)
+        except requests.HTTPError:
+            continue
         for media in g.media.epg:
             if media.title == "Recap" and len(media["items"]) > 0:
                 h.recap = media["items"][0].playbacks[-1].url
@@ -268,20 +181,29 @@ if __name__ == "__main__":
                 h.extended = media["items"][0].playbacks[-1].url
         db.update(h)
 
-    teams = list(sorted(_TEAMS.values()))
+    divisions = yaml.safe_load(DATA_PATH.joinpath("teams.yaml").read_text())["divisions"]
 
     date = datetime.now().strftime("%Y-%m-%d %H:%M")
-    env = jinja2.Environment()
+
+    loader = jinja2.FileSystemLoader(TEMPLATES_PATH)
+    env = jinja2.Environment(loader=loader)
     env.filters["date_pretty"] = date_pretty
-    tpl = env.from_string(_TEMPLATE)
+
+    tpl = env.get_template("index.jinja")
 
     seasons = db.get_seasons()
 
-    text = tpl.render(days=highlights_to_days(db.select_all()), date=date, team=None, teams=teams, seasons=seasons)
-    Path(args.path_html, "index.html").write_text(text)
+    tpl_data = dict(
+        days=highlights_to_days(db.select_all()), date=date, team=None, divisions=divisions, seasons=seasons
+    )
 
-    for team in _TEAMS.values():
-        hs = db.select_team(team)
-        days = highlights_to_days(hs)
-        text = tpl.render(days=days, date=date, team=team, teams=teams, seasons=seasons)
-        Path(args.path_html, team + ".html").write_text(text)
+    Path(args.path_html, "index.html").write_text(tpl.render(**tpl_data))
+
+    for division in divisions:
+        for team in division["teams"]:
+            hs = db.select_team(team["code"])
+            days = highlights_to_days(hs)
+            tpl_data["days"] = days
+            tpl_data["team"] = team
+            text = tpl.render(**tpl_data)
+            Path(args.path_html, team + ".html").write_text(text)
