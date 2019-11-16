@@ -1,10 +1,10 @@
 import argparse
-import json
 import sqlite3
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 
+import requests
 from attr import attrib, attrs
 
 import jinja2
@@ -261,7 +261,11 @@ if __name__ == "__main__":
 
     for h in db.select_missing():
         print("Getting content for game", h.game_id, ":", h.away, "at", h.home)
-        g = api.content(h.game_id)
+        try:
+            g = api.content(h.game_id)
+        except requests.exceptions.HTTPError:
+            continue
+
         for media in g.media.epg:
             if media.title == "Recap" and len(media["items"]) > 0:
                 playbacks = media["items"][0].playbacks
