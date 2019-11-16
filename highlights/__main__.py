@@ -1,12 +1,13 @@
 import argparse
+import json
 import sqlite3
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 
-import jinja2
 from attr import attrib, attrs
 
+import jinja2
 import nhlapi
 import pendulum
 from nhlapi.endpoints import NHLAPI
@@ -263,9 +264,13 @@ if __name__ == "__main__":
         g = api.content(h.game_id)
         for media in g.media.epg:
             if media.title == "Recap" and len(media["items"]) > 0:
-                h.recap = media["items"][0].playbacks[-1].url
+                playbacks = media["items"][0].playbacks
+                playbacks = [p for p in playbacks if p.url.endswith(".mp4")]
+                h.recap = playbacks[-1].url
             if media.title == "Extended Highlights" and len(media["items"]) > 0:
-                h.extended = media["items"][0].playbacks[-1].url
+                playbacks = media["items"][0].playbacks
+                playbacks = [p for p in playbacks if p.url.endswith(".mp4")]
+                h.extended = playbacks[-1].url
         db.update(h)
 
     teams = list(sorted(_TEAMS.values()))
